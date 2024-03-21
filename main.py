@@ -102,7 +102,7 @@ def register():
     email = req.get("email")
 
     if username in users:
-        return "User already exists"
+        return jsonify({"message": "This username is already used"}), 401
 
     user = User(
         name=username,
@@ -129,12 +129,12 @@ def login():
         session['username'] = user.name
         session['password'] = user.password
         session['user_id'] = user.id
-        return jsonify({"message": "Login successful"}), 200
+        return jsonify({"message": "Logged in successfuly"}), 200
     else:
         return jsonify({"message": "Invalid credentials"}), 401
     
 
-@app.route("/create_project", methods=["POST"])
+@app.route("/projects", methods=["POST"])
 def create_project():
     req = request.get_json()
     name = req.get("project_name")
@@ -145,9 +145,9 @@ def create_project():
     
     select_query = db.select(Project.name)
     result = db.session.execute(select_query)
-    projects = result.scalars().all()
+    projects = result.scalars().all()   
     if name in projects:
-        return "project already exists"
+        return jsonify({"message": "project already exists"})
     
     project = Project(name = name)
     db.session.add(project)
@@ -157,8 +157,10 @@ def create_project():
     
     db.session.add(projectRole)
     db.session.commit()
-
-    return jsonify({"message": "Project created"}), 200
+    
+    del project.__dict__['_sa_instance_state']
+    return jsonify({"message": "Project created",  #ПОЧИНИТЬ: проект создается и добавляется в дб, но вылезает ошибка
+                    project.name: project.__dict__}), 200
 
 
 @app.route("/connect_to_project", methods=["POST"])
@@ -179,24 +181,15 @@ def connect_to_project():
         if project:
             is_already_in_this_project = ProjectRole.query.filter_by(userId = user.id, projectId = project.id).first()
             if not is_already_in_this_project:
-                
-                session["is_connected_to_project"] = True
-                session["project_id"] = project.id
-                
-                
                 con = ProjectRole(userId = user.id, projectId = project.id, role="participant")
 
                 db.session.add(con)
                 db.session.commit()
                 
-
-                return jsonify({"message": "Connected to project"}), 200
+                return jsonify({"message": f"Connected to project {project.name}"}), 200
             
             else:
-                #TODO: ПОФИКСИТЬ 
-                session["is_connected_to_project"] = True
-                session["project_id"] = project.id
-                return jsonify({"message": "You are already connected to this project"}), 200
+                return jsonify({"message": "You are already connected to this project"})
         
         else:
             return jsonify({"message": "project does not exist"}), 401
@@ -205,29 +198,25 @@ def connect_to_project():
         return jsonify({"message": "You must log in"}), 401
     
     
-@app.route("/create_task", methods=["POST"])
-def create_task():
-    if "is_connected_to_project" in session and session["is_connected_to_project"]:
+@app.route("/projects/<int:project_id>/tasks", methods=["POST"])
+def create_task(project_id):
         req = request.get_json()
         
-        name = req.get("name")
+        name = req.get("task_name")
         description = req.get("description")
-        status_id = req.get("status_id")
-        project_id = session["project_id"]
         
-        task = Task(name = name, description = description, creation_date = datetime.date.today() ,statusId = status_id, projectId = project_id)
+        task = Task(name = name, description = description, creation_date = datetime.date.today() ,statusId = 1, projectId = project_id)
 
         db.session.add(task)
         db.session.commit()
         
-        return jsonify({"message": "task succesfully created"})
-    else:
-        print(session)
-        return jsonify({"message": "You must be connected to project"}), 401
+        del task.__dict__['_sa_instance_state']
+        return jsonify({"message": "task succesfully created", #ПОЧИНИТЬ: задача создается и добавляется в дб, но вылезает ошибка
+                        task.name: task.__dict__}), 200
 
 
 #GET REQUESTS
-@app.route("/project", methods=["GET"])
+@app.route("/projects", methods=["GET"])
 def all_projects():
     projects = ProjectRole.query.filter_by(userId = session["user_id"])
     projects_dict = {}
@@ -238,7 +227,7 @@ def all_projects():
     return jsonify(projects_dict)
 
 
-@app.route("/project/<int:project_id>")
+@app.route("/projects/<int:project_id>")
 def project_by_id(project_id):
     project = ProjectRole.query.filter_by(userId = session["user_id"], projectId = project_id).first()
     del project.__dict__['_sa_instance_state']
@@ -246,9 +235,9 @@ def project_by_id(project_id):
     return project.__dict__
 
 
-@app.route("/task", methods=["GET"])
-def all_tasks():
-    tasks = Task.query.filter_by(projectId = session["project_id"]).all()  
+@app.route("/projects/<int:project_id>/tasks", methods=["GET"])
+def all_tasks_in_project(project_id):
+    tasks = Task.query.filter_by(projectId = project_id).all()  
     tasks_dict = {}
     for task in tasks:
         del task.__dict__['_sa_instance_state']
@@ -257,28 +246,25 @@ def all_tasks():
     return jsonify(tasks_dict)
 
 
-@app.route("/task/<int:task_id>")
-def task_by_id(task_id):
-    task = Task.query.filter_by(projectId = session["project_id"], id = task_id).first()
+@app.route("/projects/<int:project_id>/tasks/<int:task_id>")
+def task_by_id(project_id, task_id):
+    task = Task.query.filter_by(projectId = project_id, id = task_id).first()
     del task.__dict__['_sa_instance_state']
     
     return task.__dict__
 
        
 #DELETE REQUESTS
-@app.route("/leave_project", methods=["DELETE", "POST"])
-def leave_project():
+@app.route("/projects/<int:project_id>", methods=["DELETE"])
+def leave_project(project_id):
     if 'logged_in' in session and session['logged_in']:  
         req = request.get_json()
         
         username = session["username"]
         password = session["password"]
         
-        
         user = User.query.filter_by(name=username, password=password).first()
-        
-        project_name = req.get("project_name")
-        project = Project.query.filter_by(name = project_name).first()
+        project = Project.query.filter_by(id = project_id).first()
         
         is_already_in_this_project = ProjectRole.query.filter_by(userId = user.id, projectId = project.id).first()
         if is_already_in_this_project:
@@ -293,12 +279,9 @@ def leave_project():
         return jsonify({"message": "You must log in"}), 401
 
 
-@app.route("/delete_task", methods=["DELETE", "POST"])
-def delete_task():
-    req = request.get_json()
-    task_id = req.get("task_id")
-    
-    task = Task.query.filter_by(id = task_id).first()
+@app.route("/projects/<int:project_id>/tasks/<int:task_id>", methods=["DELETE"])
+def delete_task(project_id, task_id):
+    task = Task.query.filter_by(id = task_id, projectId = project_id).first()
     if task:
         db.session.delete(task)
         db.session.commit()
