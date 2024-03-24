@@ -6,7 +6,6 @@ from sqlalchemy import Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from flask_migrate import Migrate
 
-import json
 import datetime
 from dotenv import dotenv_values
 
@@ -60,7 +59,6 @@ class User(db.Model):
     roles = relationship("ProjectRole", back_populates="user")
     
 
-
 class StatusList(db.Model):
     __tablename__ = "status_list"
     
@@ -69,7 +67,6 @@ class StatusList(db.Model):
     description: Mapped[str] = mapped_column(String(300), nullable=False)
     
     tasks = relationship("Task", back_populates="status")
-    
     
     
 class Task(db.Model):
@@ -158,9 +155,8 @@ def create_project():
     db.session.add(projectRole)
     db.session.commit()
     
-    del project.__dict__['_sa_instance_state']
-    return jsonify({"message": "Project created",  #ПОЧИНИТЬ: проект создается и добавляется в дб, но вылезает ошибка
-                    project.name: project.__dict__}), 200
+    return jsonify({"message": "Project created",
+                    "project": {"name": project.name, "id": project.id}}), 200
 
 
 @app.route("/connect_to_project", methods=["POST"])
@@ -200,6 +196,9 @@ def connect_to_project():
     
 @app.route("/projects/<int:project_id>/tasks", methods=["POST"])
 def create_task(project_id):
+        project = ProjectRole.query.filter_by(userId = session["user_id"], projectId = project_id).first()
+        print(project)
+        
         req = request.get_json()
         
         name = req.get("task_name")
@@ -210,9 +209,8 @@ def create_task(project_id):
         db.session.add(task)
         db.session.commit()
         
-        del task.__dict__['_sa_instance_state']
-        return jsonify({"message": "task succesfully created", #ПОЧИНИТЬ: задача создается и добавляется в дб, но вылезает ошибка
-                        task.name: task.__dict__}), 200
+        return jsonify({"message": "task succesfully created",
+                        "task": {"id": task.id, "name": task.name, "description": task.description, "creation date": task.creation_date, "status id": task.statusId, "project id": task.projectId}}), 200
 
 
 #GET REQUESTS
@@ -222,6 +220,7 @@ def all_projects():
     projects_dict = {}
     for project in projects:
         del project.__dict__['_sa_instance_state']
+        del project.__dict__["projectId"]
         projects_dict[project.id] = project.__dict__
     
     return jsonify(projects_dict)
@@ -229,8 +228,9 @@ def all_projects():
 
 @app.route("/projects/<int:project_id>")
 def project_by_id(project_id):
-    project = ProjectRole.query.filter_by(userId = session["user_id"], projectId = project_id).first()
+    project = ProjectRole.query.filter_by(userId = session["user_id"], id = project_id).first()
     del project.__dict__['_sa_instance_state']
+    del project.__dict__["projectId"]
     
     return project.__dict__
 
@@ -246,14 +246,59 @@ def all_tasks_in_project(project_id):
     return jsonify(tasks_dict)
 
 
-@app.route("/projects/<int:project_id>/tasks/<int:task_id>")
+@app.route("/projects/<int:project_id>/tasks/<int:task_id>", methods=["GET"])
 def task_by_id(project_id, task_id):
     task = Task.query.filter_by(projectId = project_id, id = task_id).first()
     del task.__dict__['_sa_instance_state']
     
     return task.__dict__
 
-       
+
+#PUT REQUESTS
+@app.route("/projects/<int:project_id>", methods=["PUT"])
+def update_project_data(project_id):
+    if request.data:
+        project = Project.query.filter_by(id = project_id).first()    
+        if project:
+            req = request.get_json()
+            updated_name = req.get("name")
+            old_name = project.name
+            project.name = updated_name if updated_name else project.name
+            db.session.add(project)
+            db.session.commit()
+            return jsonify({"message": f"Project name was succesfully updated from '{old_name}' to '{project.name}'"}), 200
+            
+        else:
+            return jsonify({"message": "Project does not exist or you have no access to it"}), 400
+            
+    else:
+        return jsonify({"message": "Your json request is empty"}), 415
+    
+    
+@app.route("/projects/<int:project_id>/tasks/<int:task_id>", methods=["PUT"])
+def update_task_data(project_id, task_id):
+    if request.data:
+        task = Task.query.filter_by(id = task_id, projectId = project_id).first()    
+        if task:
+            req = request.get_json()
+            updated_name = req.get("name")
+            updated_description = req.get("description")
+            updated_status = req.get("status")
+            
+            task.name = updated_name if updated_name else task.name
+            task.description = updated_description if updated_description else task.description
+            task.statusId = updated_status if updated_status else task.statusId
+            db.session.add(task)
+            db.session.commit()
+            return jsonify({"message": f"Task data was succesfully updated"}), 200
+            
+        else:
+            return jsonify({"message": "Task does not exist or you have no access to it"}), 400
+        
+    else:
+        return jsonify({"message": "Your json request is empty"}), 415 
+
+
 #DELETE REQUESTS
 @app.route("/projects/<int:project_id>", methods=["DELETE"])
 def leave_project(project_id):
