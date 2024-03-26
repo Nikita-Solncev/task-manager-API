@@ -277,37 +277,41 @@ def update_project_data(project_id):
         else:
             return jsonify({"message": "Your json request is empty"}), 415
     else:
-        return jsonify({"message": "Only owner can change data about project"}), 403
+        return jsonify({"message": "You don't participate in this project or you are not Owner of this project"}), 403
     
     
 @app.route("/projects/<int:project_id>/tasks/<int:task_id>", methods=["PUT"])
 def update_task_data(project_id, task_id):
-    if request.data:
-        task = Task.query.filter_by(id = task_id, projectId = project_id).first()    
-        if task:
-            req = request.get_json()
-            updated_name = req.get("name")
-            updated_description = req.get("description")
-            updated_status = req.get("status")
-            
-            task.name = updated_name if updated_name else task.name
-            task.description = updated_description if updated_description else task.description
-            task.statusId = updated_status if updated_status else task.statusId
-            db.session.add(task)
-            db.session.commit()
-            return jsonify({"message": f"Task data was succesfully updated"}), 200
+    user_role = ProjectRole.query.filter_by(userId = session["user_id"], projectId = project_id).first()
+    if user_role:
+        if request.data:
+            task = Task.query.filter_by(id = task_id, projectId = project_id).first()    
+            if task:
+                req = request.get_json()
+                updated_name = req.get("name")
+                updated_description = req.get("description")
+                updated_status = req.get("status")
+                
+                task.name = updated_name if updated_name else task.name
+                task.description = updated_description if updated_description else task.description
+                task.statusId = updated_status if updated_status else task.statusId
+                db.session.add(task)
+                db.session.commit()
+                return jsonify({"message": f"Task data was succesfully updated"}), 200
+                
+            else:
+                return jsonify({"message": "Task does not exist or you have no access to it"}), 400
             
         else:
-            return jsonify({"message": "Task does not exist or you have no access to it"}), 400
-        
+            return jsonify({"message": "Your json request is empty"}), 415 
     else:
-        return jsonify({"message": "Your json request is empty"}), 415 
-
+        return jsonify({"message": "Project does not exist or you do not participate in this project"}), 400
 
 #DELETE REQUESTS
 @app.route("/projects/<int:project_id>", methods=["DELETE"])
-def leave_project(project_id):
-    if 'logged_in' in session and session['logged_in']:  
+def leave_project(project_id): 
+    user_role = ProjectRole.query.filter_by(userId = session["user_id"], projectId = project_id).first()
+    if user_role and user_role.role == "owner":
         req = request.get_json()
         
         username = session["username"]
@@ -324,20 +328,24 @@ def leave_project(project_id):
             return jsonify({"message": "You left the project"}), 200
         else:
             return jsonify({"message": "You cannot leave a project that you are not a member of"}), 401
-    
+        
     else:
-        return jsonify({"message": "You must log in"}), 401
+        return jsonify({"message": "You don't participate in this project or you are not Owner of this project"}), 403
     
 
 @app.route("/projects/<int:project_id>/tasks/<int:task_id>", methods=["DELETE"])
 def delete_task(project_id, task_id):
-    task = Task.query.filter_by(id = task_id, projectId = project_id).first()
-    if task:
-        db.session.delete(task)
-        db.session.commit()
-        return jsonify({"message": "Task has been deleted"}), 200
+    user_role = ProjectRole.query.filter_by(userId = session["user_id"], projectId = project_id).first()
+    if user_role:
+        task = Task.query.filter_by(id = task_id, projectId = project_id).first()
+        if task:
+            db.session.delete(task)
+            db.session.commit()
+            return jsonify({"message": "Task has been deleted"}), 200
+        else:
+            return jsonify({"message": "Task doesn't exist"}), 401
     else:
-        return jsonify({"message": "Task doesn't exist"}), 401
+        return jsonify({"message": "Project does not exist or you do not participate in this project"}), 400
     
 
 if __name__ == "__main__":
