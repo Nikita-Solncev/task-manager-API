@@ -30,9 +30,8 @@ class Project(db.Model):
     __tablename__ = "project"
     
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    name: Mapped[str] = mapped_column(String(150), nullable=False, unique=True)
     
-    roles = relationship("ProjectRole", back_populates="project")
     tasks = relationship("Task", back_populates="project")
     
     
@@ -42,9 +41,11 @@ class ProjectRole(db.Model):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     userId: Mapped[int] = mapped_column(Integer, ForeignKey("user.id"))
     projectId: Mapped[int] = mapped_column(Integer, ForeignKey("project.id"))
+    # projectName: Mapped[str] = mapped_column(String(150), ForeignKey("project.name"), nullable=False, unique=True)
     role: Mapped[str] = mapped_column(String(50), nullable=False)
     
-    project = relationship("Project", back_populates="roles")
+    project_id = relationship("Project", foreign_keys=[projectId])
+    # project_name = relationship("Project", foreign_keys=[projectName])
     user = relationship("User", back_populates="roles")
     
 
@@ -322,7 +323,7 @@ def leave_project(project_id):
     
     else:
         return jsonify({"message": "You must log in"}), 401
-
+    
 
 @app.route("/projects/<int:project_id>/tasks/<int:task_id>", methods=["DELETE"])
 def delete_task(project_id, task_id):
@@ -333,7 +334,6 @@ def delete_task(project_id, task_id):
         return jsonify({"message": "Task has been deleted"}), 200
     else:
         return jsonify({"message": "Task doesn't exist"}), 401
-    
     
 
 if __name__ == "__main__":
