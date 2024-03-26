@@ -258,22 +258,26 @@ def task_by_id(project_id, task_id):
 #PUT REQUESTS
 @app.route("/projects/<int:project_id>", methods=["PUT"])
 def update_project_data(project_id):
-    if request.data:
-        project = Project.query.filter_by(id = project_id).first()    
-        if project:
-            req = request.get_json()
-            updated_name = req.get("name")
-            old_name = project.name
-            project.name = updated_name if updated_name else project.name
-            db.session.add(project)
-            db.session.commit()
-            return jsonify({"message": f"Project name was succesfully updated from '{old_name}' to '{project.name}'"}), 200
-            
+    user_role = ProjectRole.query.filter_by(userId = session["user_id"], projectId = project_id).first()
+    if user_role and user_role.role == "owner":
+        if request.data:
+            project = Project.query.filter_by(id = project_id).first()    
+            if project:
+                req = request.get_json()
+                updated_name = req.get("name")
+                old_name = project.name
+                project.name = updated_name if updated_name else project.name
+                db.session.add(project)
+                db.session.commit()
+                return jsonify({"message": f"Project name was succesfully updated from '{old_name}' to '{project.name}'"}), 200
+                
+            else:
+                return jsonify({"message": "Project does not exist or you have no access to it"}), 400
+                
         else:
-            return jsonify({"message": "Project does not exist or you have no access to it"}), 400
-            
+            return jsonify({"message": "Your json request is empty"}), 415
     else:
-        return jsonify({"message": "Your json request is empty"}), 415
+        return jsonify({"message": "Only owner can change data about project"}), 403
     
     
 @app.route("/projects/<int:project_id>/tasks/<int:task_id>", methods=["PUT"])
