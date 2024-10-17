@@ -6,6 +6,11 @@ from sqlalchemy import Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from flask_migrate import Migrate
 
+from flask_jwt_extended import create_access_token
+from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import jwt_required
+from flask_jwt_extended import JWTManager
+
 import datetime
 from dotenv import dotenv_values
 
@@ -14,6 +19,9 @@ config = dotenv_values(".env")
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = config["SQLALCHEMY_DATABASE_URI"]
 app.secret_key = config["SECRET_KEY"]
+app.config["JWT_SECRET_KEY"] = config["JWT_SECRET_KEY"]
+
+jwt = JWTManager(app)
 
 
 #database ↓↓↓
@@ -56,6 +64,7 @@ class User(db.Model):
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     email: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
     password: Mapped[str] = mapped_column(String(75), nullable=False)
+    token: Mapped[str] = mapped_column(String(500), nullable=False)
     
     roles = relationship("ProjectRole", back_populates="user")
     
@@ -101,16 +110,23 @@ def register():
 
     if username in users:
         return jsonify({"message": "This username is already used"}), 401
-
+    
+    access_token = create_access_token(identity=username)
     user = User(
         name=username,
         password=password,
-        email=email
+        email=email,
+        token=access_token
     )
     db.session.add(user)
     db.session.commit()
 
-    return jsonify({"message": "User registered"}), 200
+    return jsonify({
+        "username": username,
+        "password": password,
+        "token": access_token,
+        "message": "User registered"
+        }), 200
 
 
 @app.route("/login", methods=["POST"])
@@ -119,7 +135,6 @@ def login():
     username = req.get("username")
     password = req.get("password")
     
-
     user = User.query.filter_by(name=username, password=password).first()
 
     if user:
