@@ -8,11 +8,12 @@ from flask_migrate import Migrate
 
 from flask_jwt_extended import create_access_token
 from flask_jwt_extended import get_jwt_identity
-from flask_jwt_extended import jwt_required
 from flask_jwt_extended import JWTManager
 
 import datetime
 from dotenv import dotenv_values
+
+from validators.validators import jwt_token_required
 
 
 config = dotenv_values(".env")
@@ -49,11 +50,9 @@ class ProjectRole(db.Model):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     userId: Mapped[int] = mapped_column(Integer, ForeignKey("user.id"))
     projectId: Mapped[int] = mapped_column(Integer, ForeignKey("project.id"))
-    # projectName: Mapped[str] = mapped_column(String(150), ForeignKey("project.name"), nullable=False, unique=True)
     role: Mapped[str] = mapped_column(String(50), nullable=False)
     
     project_id = relationship("Project", foreign_keys=[projectId])
-    # project_name = relationship("Project", foreign_keys=[projectName])
     user = relationship("User", back_populates="roles")
     
 
@@ -62,7 +61,6 @@ class User(db.Model):
     
     id: Mapped[int] = mapped_column(Integer, autoincrement=True, primary_key=True)
     name: Mapped[str] = mapped_column(String(50), nullable=False)
-    email: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
     password: Mapped[str] = mapped_column(String(75), nullable=False)
     token: Mapped[str] = mapped_column(String(500), nullable=False)
     
@@ -91,13 +89,20 @@ class Task(db.Model):
 
     status = relationship("StatusList", back_populates="tasks")
     project = relationship("Project", back_populates="tasks")
-
+    
 
 #api ↓↓↓
 
 #POST REQUESTS
 @app.route("/register", methods=["POST"])
 def register():
+    """
+    Creates new user in the system
+    Request: {
+        "username": username
+        "password": password    #the password is stored encrypted
+    }
+    """
     req = request.get_json()
 
     select_query = db.select(User.name)
@@ -106,7 +111,6 @@ def register():
 
     username = req.get("username")
     password = req.get("password")
-    email = req.get("email")
 
     if username in users:
         return jsonify({"message": "This username is already used"}), 401
@@ -115,7 +119,6 @@ def register():
     user = User(
         name=username,
         password=password,
-        email=email,
         token=access_token
     )
     db.session.add(user)
@@ -129,39 +132,22 @@ def register():
         }), 200
 
 
-@app.route("/login", methods=["POST"])
-def login():
-    req = request.get_json()
-    username = req.get("username")
-    password = req.get("password")
-    
-    user = User.query.filter_by(name=username, password=password).first()
-
-    if user:
-        session['logged_in'] = True
-        session['username'] = user.name
-        session['password'] = user.password
-        session['user_id'] = user.id
-        return jsonify({"message": "Logged in successfuly"}), 200
-    else:
-        return jsonify({"message": "Invalid credentials"}), 401
-    
-
 @app.route("/projects", methods=["POST"])
+@jwt_token_required
 def create_project():
+    """
+    Creating new project
+    Request: {
+        "token": token,
+        "project_name": project_name
+    }
+    """
     req = request.get_json()
     name = req.get("project_name")
+    token = req.get("token")
     
-    username = session["username"]
-    password = session["password"]
-    user = User.query.filter_by(name=username, password=password).first()
-    
-    select_query = db.select(Project.name)
-    result = db.session.execute(select_query)
-    projects = result.scalars().all()   
-    if name in projects:
-        return jsonify({"message": "project already exists"})
-    
+    user = User.query.filter_by(token=token).first()
+      
     project = Project(name = name)
     db.session.add(project)
     db.session.flush()
@@ -177,46 +163,56 @@ def create_project():
 
 @app.route("/connect_to_project", methods=["POST"])
 def connect_to_project():
-    if 'logged_in' in session and session['logged_in']:
-        req = request.get_json()
+    #TODO Make another connecting system, like invites 
+    ...
+    # if 'logged_in' in session and session['logged_in']:
+    #     req = request.get_json()
         
-        username = session["username"]
-        password = session["password"]
+    #     username = session["username"]
+    #     password = session["password"]
         
-        #СОМНИТЕЛЬНО‼
-        user = User.query.filter_by(name=username, password=password).first()
+    #     #СОМНИТЕЛЬНО‼
+    #     user = User.query.filter_by(name=username, password=password).first()
         
-        project_name = req.get("project_name")
-        project = Project.query.filter_by(name = project_name).first()
+    #     project_name = req.get("project_name")
+    #     project = Project.query.filter_by(name = project_name).first()
         
         
-        if project:
-            is_already_in_this_project = ProjectRole.query.filter_by(userId = user.id, projectId = project.id).first()
-            if not is_already_in_this_project:
-                con = ProjectRole(userId = user.id, projectId = project.id, role="participant")
+    #     if project:
+    #         is_already_in_this_project = ProjectRole.query.filter_by(userId = user.id, projectId = project.id).first()
+    #         if not is_already_in_this_project:
+    #             con = ProjectRole(userId = user.id, projectId = project.id, role="participant")
 
-                db.session.add(con)
-                db.session.commit()
+    #             db.session.add(con)
+    #             db.session.commit()
                 
-                return jsonify({"message": f"Connected to project {project.name}"}), 200
+    #             return jsonify({"message": f"Connected to project {project.name}"}), 200
             
-            else:
-                return jsonify({"message": "You are already connected to this project"})
+    #         else:
+    #             return jsonify({"message": "You are already connected to this project"})
         
-        else:
-            return jsonify({"message": "project does not exist"}), 401
+    #     else:
+    #         return jsonify({"message": "project does not exist"}), 401
 
-    else:
-        return jsonify({"message": "You must log in"}), 401
+    # else:
+    #     return jsonify({"message": "You must log in"}), 401
     
     
 @app.route("/projects/<int:project_id>/tasks", methods=["POST"])
+@jwt_token_required
 def create_task(project_id):
-        project = ProjectRole.query.filter_by(userId = session["user_id"], projectId = project_id).first()
-        print(project)
-        
-        req = request.get_json()
-        
+    """
+    Creates new task in project
+    Request: {
+        "token": token
+        "task_name": task name
+        "task_description": task description
+    }
+    """  
+    req = request.get_json()
+    user = User.query.filter_by(token=req.get("token")).first()
+    if user: #if token is valid
+        project = ProjectRole.query.filter_by(userId=user.id, projectId = project_id).first() 
         name = req.get("task_name")
         description = req.get("description")
         
@@ -227,141 +223,203 @@ def create_task(project_id):
         
         return jsonify({"message": "task succesfully created",
                         "task": {"id": task.id, "name": task.name, "description": task.description, "creation date": task.creation_date, "status id": task.statusId, "project id": task.projectId}}), 200
-
+    else:
+        return jsonify({"message": "Invalid token"}), 401
 
 #GET REQUESTS
 @app.route("/projects", methods=["GET"])
+@jwt_token_required
 def all_projects():
-    projects = ProjectRole.query.filter_by(userId = session["user_id"])
-    projects_dict = {}
-    for project in projects:
-        del project.__dict__['_sa_instance_state']
-        del project.__dict__["projectId"]
-        projects_dict[project.id] = project.__dict__
-    
-    return jsonify(projects_dict)
+    req = request.get_json()
+    user = User.query.filter_by(token=req.get("token")).first()
+    if user: #if token is valid
+        projects = ProjectRole.query.filter_by(userId = user.id)
+        projects_dict = {}
+        for project in projects:
+            del project.__dict__['_sa_instance_state']
+            del project.__dict__["projectId"]
+            projects_dict[project.id] = project.__dict__
+
+        return jsonify(projects_dict), 200
+    else:
+        return jsonify({"message": "Invalid token"}), 401
 
 
 @app.route("/projects/<int:project_id>")
+@jwt_token_required
 def project_by_id(project_id):
-    project = ProjectRole.query.filter_by(userId = session["user_id"], id = project_id).first()
-    del project.__dict__['_sa_instance_state']
-    del project.__dict__["projectId"]
+    req = request.get_json()
+    user = User.query.filter_by(token=req.get("token")).first()
+    if user: #if token is valid
+        project = ProjectRole.query.filter_by(userId = user.id, projectId = project_id).first()
+        all_project_members = ProjectRole.query.filter_by(projectId = project_id).all()  
+        del project.__dict__['_sa_instance_state']
+        del project.__dict__["id"]
+        project.__dict__["members_id"] = [all_project_members[i].userId for i in range(len(all_project_members))]
     
-    return project.__dict__
+        return project.__dict__, 200
+    else:
+        return jsonify({"message": "Invalid token"}), 401
 
 
 @app.route("/projects/<int:project_id>/tasks", methods=["GET"])
+@jwt_token_required
 def all_tasks_in_project(project_id):
-    tasks = Task.query.filter_by(projectId = project_id).all()  
-    tasks_dict = {}
-    for task in tasks:
-        del task.__dict__['_sa_instance_state']
-        tasks_dict[task.id] = task.__dict__
-        
-    return jsonify(tasks_dict)
+    req = request.get_json()
+    user = User.query.filter_by(token=req.get("token")).first()
+    if user: #if token is valid
+        if ProjectRole.query.filter_by(userId=user.id, projectId = project_id).first():
+            tasks = Task.query.filter_by(projectId = project_id).all()  
+            tasks_dict = {}
+            for task in tasks:
+                del task.__dict__['_sa_instance_state']
+                tasks_dict[task.id] = task.__dict__
+                
+            return jsonify(tasks_dict), 200
+        else: 
+            return jsonify({"message": "Such project does not exist"}), 400
+
+    
+    else:   
+        return jsonify({"message": "Invalid token"}), 401
 
 
 @app.route("/projects/<int:project_id>/tasks/<int:task_id>", methods=["GET"])
+@jwt_token_required
 def task_by_id(project_id, task_id):
-    task = Task.query.filter_by(projectId = project_id, id = task_id).first()
-    del task.__dict__['_sa_instance_state']
-    
-    return task.__dict__
+    req = request.get_json()
+    user = User.query.filter_by(token=req.get("token")).first()
+    if user: #if token is valid
+        if ProjectRole.query.filter_by(userId=user.id, projectId = project_id).first():
+            task = Task.query.filter_by(projectId = project_id, id = task_id).first()
+            if task:
+                del task.__dict__['_sa_instance_state']
+                
+                return task.__dict__
+            else: 
+                return jsonify({"message": "Such task does not exist"}), 400
+        else: 
+            return jsonify({"message": "Such project does not exist"}), 400
+        
+    else:   
+        return jsonify({"message": "Invalid token"}), 401
 
 
 #PUT REQUESTS
 @app.route("/projects/<int:project_id>", methods=["PUT"])
+@jwt_token_required
 def update_project_data(project_id):
-    user_role = ProjectRole.query.filter_by(userId = session["user_id"], projectId = project_id).first()
-    if user_role and user_role.role == "owner":
-        if request.data:
-            project = Project.query.filter_by(id = project_id).first()    
-            if project:
-                req = request.get_json()
-                updated_name = req.get("name")
-                old_name = project.name
-                project.name = updated_name if updated_name else project.name
-                db.session.add(project)
-                db.session.commit()
-                return jsonify({"message": f"Project name was succesfully updated from '{old_name}' to '{project.name}'"}), 200
-                
+    req = request.get_json()
+    user = User.query.filter_by(token=req.get("token")).first()
+    if user: #if token is valid
+        user_role = ProjectRole.query.filter_by(userId = user.id, projectId = project_id).first()
+        if user_role and user_role.role == "owner":
+            if request.data:
+                project = Project.query.filter_by(id = project_id).first()    
+                if project:
+                    req = request.get_json()
+                    updated_name = req.get("name")
+                    old_name = project.name
+                    project.name = updated_name if updated_name else project.name
+                    db.session.add(project)
+                    db.session.commit()
+                    return jsonify({"message": f"Project name was succesfully updated from '{old_name}' to '{project.name}'"}), 200
+                    
+                else:
+                    return jsonify({"message": "Project does not exist or you have no access to it"}), 400
             else:
-                return jsonify({"message": "Project does not exist or you have no access to it"}), 400
-                
+                return jsonify({"message": "Your json request is empty"}), 415
         else:
-            return jsonify({"message": "Your json request is empty"}), 415
-    else:
-        return jsonify({"message": "You don't participate in this project or you are not Owner of this project"}), 403
+            return jsonify({"message": "You don't participate in this project or you are not Owner of this project"}), 403
+    else:   
+        return jsonify({"message": "Invalid token"}, 401)
     
     
 @app.route("/projects/<int:project_id>/tasks/<int:task_id>", methods=["PUT"])
+@jwt_token_required
 def update_task_data(project_id, task_id):
-    user_role = ProjectRole.query.filter_by(userId = session["user_id"], projectId = project_id).first()
-    if user_role:
-        if request.data:
-            task = Task.query.filter_by(id = task_id, projectId = project_id).first()    
-            if task:
-                req = request.get_json()
-                updated_name = req.get("name")
-                updated_description = req.get("description")
-                updated_status = req.get("status")
-                
-                task.name = updated_name if updated_name else task.name
-                task.description = updated_description if updated_description else task.description
-                task.statusId = updated_status if updated_status else task.statusId
-                db.session.add(task)
-                db.session.commit()
-                return jsonify({"message": f"Task data was succesfully updated"}), 200
+    req = request.get_json()
+    user = User.query.filter_by(token=req.get("token")).first()
+    if user: #if token is valid
+        user_role = ProjectRole.query.filter_by(userId = user.id, projectId = project_id).first()
+        if user_role:
+            if request.data:
+                task = Task.query.filter_by(id = task_id, projectId = project_id).first()    
+                if task:
+                    req = request.get_json()
+                    updated_name = req.get("name")
+                    updated_description = req.get("description")
+                    updated_status = req.get("status")
+                    
+                    task.name = updated_name if updated_name else task.name
+                    task.description = updated_description if updated_description else task.description
+                    task.statusId = updated_status if updated_status else task.statusId
+                    db.session.add(task)
+                    db.session.commit()
+                    return jsonify({"message": f"Task data was succesfully updated"}), 200
+                    
+                else:
+                    return jsonify({"message": "Task does not exist or you have no access to it"}), 400
                 
             else:
-                return jsonify({"message": "Task does not exist or you have no access to it"}), 400
-            
+                return jsonify({"message": "Your json request is empty"}), 415 
         else:
-            return jsonify({"message": "Your json request is empty"}), 415 
-    else:
-        return jsonify({"message": "Project does not exist or you do not participate in this project"}), 400
+            return jsonify({"message": "Project does not exist or you do not participate in this project"}), 400
+    else:   
+        return jsonify({"message": "Invalid token"}, 401)
 
 #DELETE REQUESTS
 @app.route("/projects/<int:project_id>", methods=["DELETE"])
+@jwt_token_required
 def leave_project(project_id): 
-    user_role = ProjectRole.query.filter_by(userId = session["user_id"], projectId = project_id).first()
-    if user_role and user_role.role == "owner":
-        req = request.get_json()
-        
-        username = session["username"]
-        password = session["password"]
-        
-        user = User.query.filter_by(name=username, password=password).first()
-        project = Project.query.filter_by(id = project_id).first()
-        
-        is_already_in_this_project = ProjectRole.query.filter_by(userId = user.id, projectId = project.id).first()
-        if is_already_in_this_project:
-            projectRole = ProjectRole.query.filter_by(projectId=project.id, userId=user.id).first()
-            db.session.delete(projectRole)
-            db.session.commit()
-            return jsonify({"message": "You left the project"}), 200
+    req = request.get_json()
+    user = User.query.filter_by(token=req.get("token")).first()
+    if user: #if token is valid
+        user_role = ProjectRole.query.filter_by(userId = user.id, projectId = project_id).first()
+        if user_role and user_role.role == "owner":
+            req = request.get_json()
+            
+            username = session["username"]
+            password = session["password"]
+            
+            user = User.query.filter_by(name=username, password=password).first()
+            project = Project.query.filter_by(id = project_id).first()
+            
+            is_already_in_this_project = ProjectRole.query.filter_by(userId = user.id, projectId = project.id).first()
+            if is_already_in_this_project:
+                projectRole = ProjectRole.query.filter_by(projectId=project.id, userId=user.id).first()
+                db.session.delete(projectRole)
+                db.session.commit()
+                return jsonify({"message": "You left the project"}), 200
+            else:
+                return jsonify({"message": "You cannot leave a project that you are not a member of"}), 401
+            
         else:
-            return jsonify({"message": "You cannot leave a project that you are not a member of"}), 401
-        
-    else:
-        return jsonify({"message": "You don't participate in this project or you are not Owner of this project"}), 403
+            return jsonify({"message": "You don't participate in this project or you are not Owner of this project"}), 403
+    else:   
+        return jsonify({"message": "Invalid token"}, 401)
     
 
 @app.route("/projects/<int:project_id>/tasks/<int:task_id>", methods=["DELETE"])
+@jwt_token_required
 def delete_task(project_id, task_id):
-    user_role = ProjectRole.query.filter_by(userId = session["user_id"], projectId = project_id).first()
-    if user_role:
-        task = Task.query.filter_by(id = task_id, projectId = project_id).first()
-        if task:
-            db.session.delete(task)
-            db.session.commit()
-            return jsonify({"message": "Task has been deleted"}), 200
+    req = request.get_json()
+    user = User.query.filter_by(token=req.get("token")).first()
+    if user: #if token is valid
+        user_role = ProjectRole.query.filter_by(userId = session["user_id"], projectId = project_id).first()
+        if user_role:
+            task = Task.query.filter_by(id = task_id, projectId = project_id).first()
+            if task:
+                db.session.delete(task)
+                db.session.commit()
+                return jsonify({"message": "Task has been deleted"}), 200
+            else:
+                return jsonify({"message": "Task doesn't exist"}), 401
         else:
-            return jsonify({"message": "Task doesn't exist"}), 401
-    else:
-        return jsonify({"message": "Project does not exist or you do not participate in this project"}), 400
-    
+            return jsonify({"message": "Project does not exist or you do not participate in this project"}), 400
+    else:   
+        return jsonify({"message": "Invalid token"}, 401)
+        
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
