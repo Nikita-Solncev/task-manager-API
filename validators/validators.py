@@ -8,7 +8,7 @@ def jwt_token_required(func):
     """
     @wraps(func)
     def wrapper(*args, **kwargs):
-        if "token" not in request.get_json():
+        if "token" not in request.get_json(): 
             return jsonify({"message": "Token required"}), 401
         
         return func(*args, **kwargs)  

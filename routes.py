@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from models import db, Project, ProjectRole, User, StatusList, Task
 from validators.validators import jwt_token_required
+import uuid
 
 main = Blueprint('main', __name__)
 
@@ -73,41 +74,17 @@ def create_project():
                     "project": {"name": project.name, "id": project.id}}), 200
 
 
-@main.route("/connect_to_project", methods=["POST"])
+@main.route("/createinvitelink", methods=["POST"]) #This route name is not as rest, I'll think about in later 
+@jwt_token_required
 def connect_to_project():
-    #TODO Make another connecting system, like invites 
-    ...
-    # if 'logged_in' in session and session['logged_in']:
-    #     req = request.get_json()
-        
-    #     username = session["username"]
-    #     password = session["password"]
-        
-    #     #СОМНИТЕЛЬНО‼
-    #     user = User.query.filter_by(name=username, password=password).first()
-        
-    #     project_name = req.get("project_name")
-    #     project = Project.query.filter_by(name = project_name).first()
-        
-        
-    #     if project:
-    #         is_already_in_this_project = ProjectRole.query.filter_by(userId = user.id, projectId = project.id).first()
-    #         if not is_already_in_this_project:
-    #             con = ProjectRole(userId = user.id, projectId = project.id, role="participant")
-
-    #             db.session.add(con)
-    #             db.session.commit()
-                
-    #             return jsonify({"message": f"Connected to project {project.name}"}), 200
-            
-    #         else:
-    #             return jsonify({"message": "You are already connected to this project"})
-        
-    #     else:
-    #         return jsonify({"message": "project does not exist"}), 401
-
-    # else:
-    #     return jsonify({"message": "You must log in"}), 401
+    req = request.get_json()
+    project_id = req.get("project_id")
+    
+    user = User.query.filter_by(token=req.get("token")).first()
+    
+    connection_token = str(uuid.uuid4())
+    
+    return jsonify({"invite_link": f"http://127.0.0.1:5000/connecttoproject/{connection_token}"}), 200  #change localhost to actual address in the future
     
     
 @main.route("/projects/<int:project_id>/tasks", methods=["POST"])
