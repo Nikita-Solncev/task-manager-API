@@ -3,6 +3,7 @@ from models import db, Project, ProjectRole, User, StatusList, Task
 from validators.validators import jwt_token_required
 import uuid
 
+
 main = Blueprint('main', __name__)
 
 
