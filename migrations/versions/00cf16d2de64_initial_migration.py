@@ -1,8 +1,8 @@
-"""Initial migration.
+"""initial migration
 
-Revision ID: 9df0ad28d4fd
+Revision ID: 00cf16d2de64
 Revises: 
-Create Date: 2024-03-01 21:31:33.467786
+Create Date: 2024-11-15 21:38:56.675118
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '9df0ad28d4fd'
+revision = '00cf16d2de64'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -21,7 +21,8 @@ def upgrade():
     op.create_table('project',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(length=150), nullable=False),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('name')
     )
     op.create_table('status_list',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -33,10 +34,9 @@ def upgrade():
     op.create_table('user',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
     sa.Column('name', sa.String(length=50), nullable=False),
-    sa.Column('email', sa.String(length=200), nullable=False),
     sa.Column('password', sa.String(length=75), nullable=False),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('email')
+    sa.Column('token', sa.String(length=500), nullable=False),
+    sa.PrimaryKeyConstraint('id')
     )
     op.create_table('projectRole',
     sa.Column('id', sa.Integer(), nullable=False),
