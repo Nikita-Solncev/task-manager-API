@@ -7,10 +7,10 @@ def jwt_token_required(func):
     Checks if token was given in request, requires "token" field
     """
     @wraps(func)
-    def wrapper(*args, **kwargs):
-        if "token" not in request.get_json():
+    def wrapper(*args, **kwargs):       
+        token = request.headers.get("Authorization")
+        if not token:
             return jsonify({"message": "Token required"}), 401
-        
         return func(*args, **kwargs)  
     return wrapper
 

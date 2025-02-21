@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from models import db, Project, ProjectRole, User, StatusList, Task
 from validators.validators import jwt_token_required
 from flask_jwt_extended import create_access_token
+from datetime import datetime
 
 
 main = Blueprint('main', __name__)
@@ -46,20 +47,34 @@ def register():
         }), 200
 
 
+@main.route("/login", methods=["POST"])
+def login():
+    req = request.get_json()   
+    username = req.get("username")
+    password = req.get("password")
+    
+    user = User.query.filter_by(name=username).first()
+    if not user:
+        return jsonify({"message": "User not found"}), 404
+    if user.password != password:
+        return jsonify({"message": "Wrong password"}), 401
+    
+    return jsonify({"message": "Cool", "token": user.token}), 200
+
+
 @main.route("/projects", methods=["POST"])
 @jwt_token_required
 def create_project():
     """
     Creating new project
     Request: {
-        "token": token,
         "project_name": project_name
     }
     """
     req = request.get_json()
     name = req.get("project_name")
-    token = req.get("token")
-    
+    token = request.headers.get("Authorization").split(' ', 1)[1]
+
     user = User.query.filter_by(token=token).first()
       
     project = Project(name = name)
@@ -118,7 +133,6 @@ def create_task(project_id):
     """
     Creates new task in project
     Request: {
-        "token": token
         "task_name": task name
         "task_description": task description
     }
@@ -144,8 +158,7 @@ def create_task(project_id):
 @main.route("/projects", methods=["GET"])
 @jwt_token_required
 def all_projects():
-    req = request.get_json()
-    user = User.query.filter_by(token=req.get("token")).first()
+    user = User.query.filter_by(token=request.headers.get("Authorization").split(' ', 1)[1]).first() # type: ignore #Splitting the token from the header
     if user: #if token is valid
         projects = ProjectRole.query.filter_by(userId = user.id)
         projects_dict = {}
