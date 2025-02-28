@@ -43,6 +43,7 @@ class User(db.Model):
     token: Mapped[str] = mapped_column(String(500), nullable=False)
     
     roles = relationship("ProjectRole", back_populates="user")
+    invitations = relationship("Invitation", back_populates="inviter")
     
 
 class StatusList(db.Model):
@@ -68,3 +69,14 @@ class Task(db.Model):
     status = relationship("StatusList", back_populates="tasks")
     project = relationship("Project", back_populates="tasks")
     
+    
+class Invitation(db.Model):
+    __tablename__ = "invitation"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(36), unique=True, nullable=False)
+    inviter_id: Mapped[int] = mapped_column(Integer, ForeignKey('user.id'), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    
+    inviter = relationship('User', back_populates="invitations")

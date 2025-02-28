@@ -1,8 +1,9 @@
 from flask import Blueprint, request, jsonify
-from models import db, Project, ProjectRole, User, StatusList, Task
+from models import db, Project, ProjectRole, User, StatusList, Task, Invitation
 from validators.validators import jwt_token_required
 from flask_jwt_extended import create_access_token
-from datetime import datetime
+from datetime import datetime, timedelta
+import uuid
 
 
 main = Blueprint('main', __name__)
@@ -11,13 +12,6 @@ main = Blueprint('main', __name__)
 #POST REQUESTS
 @main.route("/register", methods=["POST"])
 def register():
-    """
-    Creates new user in the system
-    Request: {
-        "username": username
-        "password": password    #the password is stored encrypted
-    }
-    """
     req = request.get_json()
 
     select_query = db.select(User.name)
@@ -65,19 +59,15 @@ def login():
 @main.route("/projects", methods=["POST"])
 @jwt_token_required
 def create_project():
-    """
-    Creating new project
-    Request: {
-        "project_name": project_name
-    }
-    """
     req = request.get_json()
-    name = req.get("project_name")
+    name = req.get("name")
     token = request.headers.get("Authorization").split(' ', 1)[1]
 
+    print(name)
+    
     user = User.query.filter_by(token=token).first()
       
-    project = Project(name = name)
+    project = Project(name=name)
     db.session.add(project)
     db.session.flush()
 
@@ -90,53 +80,35 @@ def create_project():
                     "project": {"name": project.name, "id": project.id}}), 200
 
 
-@main.route("/connect_to_project", methods=["POST"])
-def connect_to_project():
-    #TODO Make another connecting system, like invites 
-    ...
-    # if 'logged_in' in session and session['logged_in']:
-    #     req = request.get_json()
-        
-    #     username = session["username"]
-    #     password = session["password"]
-        
-    #     #СОМНИТЕЛЬНО‼
-    #     user = User.query.filter_by(name=username, password=password).first()
-        
-    #     project_name = req.get("project_name")
-    #     project = Project.query.filter_by(name = project_name).first()
-        
-        
-    #     if project:
-    #         is_already_in_this_project = ProjectRole.query.filter_by(userId = user.id, projectId = project.id).first()
-    #         if not is_already_in_this_project:
-    #             con = ProjectRole(userId = user.id, projectId = project.id, role="participant")
-
-    #             db.session.add(con)
-    #             db.session.commit()
-                
-    #             return jsonify({"message": f"Connected to project {project.name}"}), 200
-            
-    #         else:
-    #             return jsonify({"message": "You are already connected to this project"})
-        
-    #     else:
-    #         return jsonify({"message": "project does not exist"}), 401
-
-    # else:
-    #     return jsonify({"message": "You must log in"}), 401
+@main.route("/create_invite_link", methods=["POST"])
+@jwt_token_required
+def create_invite_link():
+    req = request.get_json()
+    token = request.headers.get("Authorization").split(' ', 1)[1]
+    
+    user = User.query.filter_by(token=token).first()
+    
+    invitation_code = str(uuid.uuid4())
+    created_at = datetime.utcnow()
+    expires_at = created_at + timedelta(days=7)
+    
+    invitation =  Invitation(
+        code=invitation_code,
+        inviter_id=user.id,
+        created_at=created_at,
+        expires_at=expires_at
+    )
+    
+    db.session.add(invitation)
+    db.session.commit()
+    
+    return jsonify({"message": {"invitation_code": invitation_code,
+                                "expires_at": expires_at.isoformat()}}), 200
     
     
 @main.route("/projects/<int:project_id>/tasks", methods=["POST"])
 @jwt_token_required
 def create_task(project_id):
-    """
-    Creates new task in project
-    Request: {
-        "task_name": task name
-        "task_description": task description
-    }
-    """  
     req = request.get_json()
     user = User.query.filter_by(token=req.get("token")).first()
     if user: #if token is valid
@@ -166,7 +138,7 @@ def all_projects():
             del project.__dict__['_sa_instance_state']
             del project.__dict__["projectId"]
             projects_dict[project.id] = project.__dict__
-
+        print(projects_dict)
         return jsonify(projects_dict), 200
     else:
         return jsonify({"message": "Invalid token"}), 401
@@ -238,7 +210,7 @@ def task_by_id(project_id, task_id):
 def update_project_data(project_id):
     req = request.get_json()
     user = User.query.filter_by(token=req.get("token")).first()
-    if user: #if token is valid
+    if user: 
         user_role = ProjectRole.query.filter_by(userId = user.id, projectId = project_id).first()
         if user_role and user_role.role == "owner":
             if request.data:
